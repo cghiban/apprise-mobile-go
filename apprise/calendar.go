@@ -76,6 +76,11 @@ func (c *Client) EventList() ([]Event, error) {
 	}
 	defer res.Body.Close()
 
+	if res.StatusCode == 403 {
+		fmt.Println(res.StatusCode, res.Status)
+		return events, errors.New("403 Forbidden. Invalid APIKEY?!")
+	}
+
 	if err := json.NewDecoder(res.Body).Decode(&events); err != nil {
 		return events, err
 	}

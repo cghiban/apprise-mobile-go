@@ -13,16 +13,22 @@ import (
 const twoWeeks = 2 * 7 * 24 * time.Hour
 
 var apiKey string
+var production bool
 
 func init() {
 	apiKey = os.Getenv("APIKEY")
 	if apiKey == "" {
 		log.Fatalln("Apprise APIKEY is not set")
 	}
+
+	prod := os.Getenv("PRODUCTION")
+	if len(prod) > 0 {
+		production = true
+	}
 }
 
 func main() {
-	var api = apprise.New(apiKey, true)
+	var api = apprise.New(apiKey, production)
 
 	events, err := api.EventList()
 	if err != nil {
