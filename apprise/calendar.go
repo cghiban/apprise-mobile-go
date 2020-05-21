@@ -36,13 +36,13 @@ func (t *JSONTime) UnmarshalJSON(buf []byte) error {
 
 //Event - event struct
 type Event struct {
-	ID         string   `json:"_id"`
+	ID         string   `json:"_id,omitempty"`
 	Groups     []string `json:"accessGroups"`
-	Account    string   `json:"account"`
+	Account    string   `json:"account,omitempty"`
 	AllDay     bool     `json:"allday"`
 	CalendarID string   `json:"calendar"`
 	StartDate  JSONTime `json:"startDate"`
-	EndDate    JSONTime `json:"endDate"`
+	EndDate    JSONTime `json:"endDate,omitempty"`
 	Title      string   `json:"title"`
 	Notes      string   `json:"notes"`
 }
@@ -85,6 +85,45 @@ func (c *Client) EventList() ([]Event, error) {
 		return events, err
 	}
 	return events, nil
+}
+
+//CreateEvent - create the given Event
+func (c *Client) CreateEvent(e Event) (Event, error) {
+	var updatedEvent Event
+	uri := fmt.Sprintf("%s/events?code=%s", BaseURL, c.apiKey)
+	//fmt.Println(uri)
+	b, err := json.Marshal(e)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var client http.Client
+	req, err := http.NewRequest(
+		"POST",
+		uri,
+		bytes.NewBuffer(b),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := client.Do(req)
+	if err != nil {
+		log.Fatal(err)
+		return updatedEvent, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != 201 {
+		fmt.Println(res.StatusCode, res.Status)
+		var updateError UpdateError
+		if err := json.NewDecoder(res.Body).Decode(&updateError); err != nil {
+			log.Fatal(err)
+		}
+		return updatedEvent, errors.New(updateError.Message + "\n" + updateError.Code + "\n" + updateError.OriginalResponse)
+	}
+
+	if err := json.NewDecoder(res.Body).Decode(&updatedEvent); err != nil {
+		return updatedEvent, err
+	}
+	return updatedEvent, nil
 }
 
 //UpdateEvent - update the given Event
@@ -142,7 +181,7 @@ func (c *Client) DeleteEvent(eID string) error {
 		fmt.Println(res.StatusCode, res.Status)
 		var updateError UpdateError
 		if err := json.NewDecoder(res.Body).Decode(&updateError); err != nil {
-			log.Fatal(err)
+			log.Println(err)
 		}
 		return errors.New(updateError.Message + "\n" + updateError.Code + "\n" + updateError.OriginalResponse)
 	}

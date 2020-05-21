@@ -7,10 +7,10 @@ import (
 	"os"
 	"time"
 
-	"../apprise"
+	"apprise/apprise"
 )
 
-const twoWeeks = 2 * 7 * 24 * time.Hour
+const oneDay = 24 * time.Hour
 
 var apiKey string
 var production bool
@@ -35,14 +35,23 @@ func main() {
 		log.Fatal(err)
 	}
 
-	twoWeeksAgo := time.Now().UTC().Add(-twoWeeks)
-	fmt.Println("Removing events older than: ", twoWeeksAgo)
+	//twoWeeksAgo := time.Now().UTC().Add(-twoWeeks)
+	oneDayAgo := time.Now().UTC().Add(-oneDay)
+	fmt.Printf("Found: %d events\n", len(events))
+	fmt.Println("Removing events older than: ", oneDayAgo)
 	for _, e := range events {
-		if e.StartDate.Time.Before(twoWeeksAgo) {
+		/*if err := api.DeleteEvent(e.ID); err != nil {
+			fmt.Println(err)
+		}
+		continue*/
+
+		if e.StartDate.Time.Before(oneDayAgo) {
 			fmt.Println("Will delete:", e.ID, e.StartDate)
 			if err := api.DeleteEvent(e.ID); err != nil {
 				fmt.Println(err)
 			}
+		} else {
+			//fmt.Println("* keeping ", e.ID, e.StartDate, e.Title)
 		}
 	}
 }
