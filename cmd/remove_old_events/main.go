@@ -46,12 +46,12 @@ func main() {
 		continue*/
 
 		if e.StartDate.Time.Before(oneDayAgo) {
-			fmt.Println("Will delete:", e.ID, e.StartDate)
+			fmt.Println("Will delete:", e.ID, e.StartDate.Format("2006-01-02"), e.Title)
 			if err := api.DeleteEvent(e.ID); err != nil {
 				fmt.Println(err)
 			}
 		} else {
-			//fmt.Println("* keeping ", e.ID, e.StartDate, e.Title)
+			//fmt.Println("* keeping ", e.ID, e.StartDate.Format("2006-01-02"), e.Title)
 		}
 	}
 }

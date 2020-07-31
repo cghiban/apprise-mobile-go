@@ -16,7 +16,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// FMXEvent - FMXEvent
+// FMXEvent - structure for locally stored events
 type FMXEvent struct {
 	FmxID       string    `db:"fmx_id"`
 	OccuranceID string    `db:"occurance_id"`
@@ -172,7 +172,7 @@ func publishEvent(db *sql.DB, e fmx.Event) error {
 		StartDate:  startDate,
 		EndDate:    endDate,
 		Title:      e.Title,
-		Notes:      e.Subtitle,
+		Notes:      strings.TrimSpace(e.Subtitle + "\n" + e.Description),
 	}
 
 	aEvent, err := api.CreateEvent(eventData)
@@ -209,46 +209,82 @@ func publishEvent(db *sql.DB, e fmx.Event) error {
 	return nil
 }
 
+func isModified(dbevent *FMXEvent, fe *fmx.Event) bool {
+
+	/*
+		fmt.Printf("%+v\n", dbevent)
+		fmt.Printf("~~~~~~~~~~~~~~~~~~~~~\n")
+		fmt.Printf("%+v\n", fe)
+	*/
+
+	if dbevent.StartDate.Local().String() != fe.Start.Time.String() {
+		fmt.Printf(" >> Start: %v -> %v\n", dbevent.StartDate.Local(), fe.Start.Time)
+		return true
+	}
+
+	if fe.End != nil && dbevent.EndDate.Local().String() != fe.End.Time.String() {
+		fmt.Printf(" >> End: %v -> %v\n", dbevent.EndDate.Local(), fe.End.Time)
+		return true
+	}
+
+	if dbevent.Title != fe.Title {
+		fmt.Printf(" >> Title: %s -> %s\n", dbevent.Title, fe.Title)
+		return true
+	}
+	description := strings.TrimSpace(fe.Subtitle + "\n" + fe.Description)
+	if dbevent.Notes != description {
+		fmt.Printf(" >> Notes: {%s} -> {%s}\n", dbevent.Notes, description)
+		return true
+	}
+
+	return false
+}
+
+// details from here:
+// https://cshl.gofmx.com/scheduling/requests/2201895/occurrences/5209400
+//
 func main() {
 
 	api = apprise.New(apiKey, production)
 	db := initDB(dbPath)
 
-	events := fmx.Retrieve()
-	for _, e := range events {
-		if e.Canceled {
+	fmxEvents := fmx.Retrieve()
+	for _, fe := range fmxEvents {
+		dbevent := findEvent(db, fe.ID, fe.OccuranceID)
+		if fe.Canceled {
 			// check is already added
 			// if added, check if canceled
 			//	 if canceled ,remove from AppRise AND remove from DB
 
-			event := findEvent(db, e.ID, e.OccuranceID)
-			if event != nil && event.APIID != "" {
-				fmt.Println("XX", e.ID, "\t", e.Start, "\t", e.AllDay, "\t", e.Title, e.Subtitle)
+			if dbevent != nil && dbevent.APIID != "" {
+				fmt.Println("XX", fe.ID, "\t", fe.Start, "\t", fe.AllDay, "\t", fe.Title, fe.Subtitle)
 
-				err := api.DeleteEvent(event.APIID)
+				err := api.DeleteEvent(dbevent.APIID)
 				if err != nil && !strings.Contains(err.Error(), "No object found with") {
 					fmt.Println("Error deleting api event: ", err)
 				} else {
-					fmt.Println("** Deleted: ", event.APIID, event.Title)
+					fmt.Println("** Deleted: ", dbevent.APIID, dbevent.Title)
 					// update event, remove its api_id
-					event.APIID = ""
-					updateEvent(db, event)
+					dbevent.APIID = ""
+					updateEvent(db, dbevent)
 				}
 			}
 			// do not remove this line
 			continue
 		}
 
-		event := findEvent(db, e.ID, e.OccuranceID)
-		if event != nil {
+		if dbevent != nil {
 			// we also need to check if event was modified
-			fmt.Printf("found %s,%s,%s\t%s\t%s\n", event.FmxID, event.OccuranceID,
-				event.APIID, event.StartDate.Local().Format("1/2 3:4"), event.Title,
+			fmt.Printf("found %s,%s,%s\t%s\t%s\n", dbevent.FmxID, dbevent.OccuranceID,
+				dbevent.APIID, dbevent.StartDate.Local().Format("1/2 3:4"), dbevent.Title,
 			)
+			if isModified(dbevent, &fe) {
+				fmt.Println("---- ^^^ modified ------------------------------------")
+			}
 		} else {
-			fmt.Println("OK", e.ID, "\t", e.OccuranceID, "\t", e.Start, "\t", e.AllDay, "\t", e.Title, e.Subtitle)
-			if err := publishEvent(db, e); err != nil {
-				fmt.Printf("---- error publishing %q:\n%q\n", e, err)
+			fmt.Println("ADDING", fe.ID, "\t", fe.OccuranceID, "\t", fe.Start, "\t", fe.Title, fe.Subtitle)
+			if err := publishEvent(db, fe); err != nil {
+				fmt.Printf("---- error publishing %q:\n%q\n", fe, err)
 			}
 			//break
 		}

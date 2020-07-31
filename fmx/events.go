@@ -36,15 +36,61 @@ func (t *JSONTime) UnmarshalJSON(buf []byte) error {
 
 //APIEvent - event struct for reading FMX events
 type APIEvent struct {
-	ID        string    `json:"id"`
-	SeriesID  string    `json:"seriesID"`
-	ReadURL   string    `json:"readUrl"`
-	Title     string    `json:"title"`
-	Subtitle  string    `json:"subtitle"`
-	AllDay    bool      `json:"allDay"`
-	ClassName string    `json:"className"`
-	Start     *JSONTime `json:"start"`
-	End       *JSONTime `json:"end"`
+	ID          string    `json:"id"`
+	SeriesID    string    `json:"seriesID"`
+	ReadURL     string    `json:"readUrl"`
+	Title       string    `json:"title"`
+	Subtitle    string    `json:"subtitle"` // has Location info
+	AllDay      bool      `json:"allDay"`
+	ClassName   string    `json:"className"`
+	Start       *JSONTime `json:"start"`
+	End         *JSONTime `json:"end"`
+	Description string
+}
+
+//FetchEventDetails - get details for the given FMX API Event
+func (e *APIEvent) FetchEventDetails() {
+
+	res, err := http.Get(fmt.Sprintf("%s%s", BaseURL, e.ReadURL))
+	if err != nil {
+		log.Panicln(err)
+		return
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		log.Printf("status code error: %d %s", res.StatusCode, res.Status)
+		return
+	}
+
+	description := ""
+
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+
+	// document.querySelectorAll('section.user-fieldsets div.control-group').forEach(e => {console.log(e.querySelector('.control-label').textContent, e.querySelector('.controls').textContent);})
+	doc.Find("section.user-fieldsets div.control-group").Each(func(i int, s *goquery.Selection) {
+
+		// since we get two elements (label and div), we need to use a flag
+		foundField := false
+		s.Find("label.control-label, div.controls").Each(func(j int, sl *goquery.Selection) {
+			txt := strings.TrimSpace(sl.Text())
+			lbl := sl.AttrOr("for", "")
+			if strings.Contains(lbl, "CustomFields_") && strings.Contains(txt, "Description") {
+				foundField = true
+				return
+			}
+			if foundField {
+				if txt != "-" { //
+					if description != txt { // avoid case when short and long desc are the same
+						description += txt + "\n"
+					}
+				}
+				foundField = false
+				//fmt.Println("\t", j, "\t", lbl, "\t", txt)
+			}
+		})
+	})
+
+	e.Description = strings.TrimSpace(description)
 }
 
 //Event - event struct
@@ -52,7 +98,8 @@ type Event struct {
 	ID          string
 	OccuranceID string
 	Title       string
-	Subtitle    string
+	Subtitle    string // it should be called Location
+	Description string
 	AllDay      bool
 	Canceled    bool
 	Start       *JSONTime
@@ -96,21 +143,34 @@ func Retrieve() []Event {
 			// build final list
 			for _, e := range localList {
 
+				//e.FetchEventDetails()
+				/*lDesc := len(e.Description)
+				if lDesc > 0 {
+					if lDesc < 40 {
+						fmt.Printf("** have desc: %s, [%s]\n", e.ID, e.Description)
+					} else {
+						fmt.Printf("** have desc: %s, [%s]", e.ID, e.Description[0:40])
+					}
+				}*/
+				time.Sleep(800 * time.Microsecond) // 0.8th of a second
+
 				//if !reCanceled.Match([]byte(e.ClassName)) {
 				tmparray := strings.Split(e.ID, "-")
 				e.ID = tmparray[2]
 
 				tmparray = strings.Split(e.ReadURL, "/")
-				eventList = append(eventList, Event{
+				fmxEvent := Event{
 					ID:          e.ID,
 					OccuranceID: tmparray[len(tmparray)-1],
 					Title:       e.Title,
 					Subtitle:    e.Subtitle,
+					Description: e.Description,
 					Canceled:    reCanceled.Match([]byte(e.ClassName)),
 					Start:       e.Start,
 					End:         e.End,
 					AllDay:      e.AllDay,
-				})
+				}
+				eventList = append(eventList, fmxEvent)
 				//}
 			}
 
